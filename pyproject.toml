@@ -1,0 +1,24 @@
+[project]
+name = "crbdd"
+version = "0.1.0"
+description = "Coconut rhinoceros beetle damage detection"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{ name = "Aubrey Moore", email = "aubreymoore2013@gmail.com" }]
+dependencies = [
+    "sphinx-autoapi>=3.8.0",
+    "sphinx>=9.1.0",
+    "myst-parser>=5.0.0",
+    "sphinx-autoapi>=3.8.0",
+    "sphinx-rtd-theme>=2.0.0",
+]
+
+[dependency-groups]
+docs = [
+    "sphinx-autoapi>=3.8.0",
+    "sphinx>=9.1.0",
+    "myst-parser>=5.0.0",
+    "sphinx-autoapi>=3.8.0",
+    "sphinx-rtd-theme>=2.0.0",
+]
+
