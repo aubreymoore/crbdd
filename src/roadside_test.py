@@ -7,9 +7,9 @@ Last modified: 2026-02-19
 This python code provides python functions for testing functions for automated detection of coconut rhinoceros beetle 
 damage in digital images provided in roadside.py.
 
-To run all tests, execute the following in a terminal opened in the projects root directory:
+To run all tests, execute the following in a terminal opened in the project root directory:
 
-uv run -m pytest
+uv run -m pytest -s
 """
 
 import roadside as rs
@@ -54,7 +54,6 @@ def test_all() -> None:
             )
             ic(len(results_gpu))
             
-
             # Free up GPU memory in preparation for detecting objects in the next image
             # This is a work-around to prevent out-of-memory errors from the GPU
             # I move all results for further processing and use the GPU only for object detection.
@@ -64,13 +63,6 @@ def test_all() -> None:
             del results_gpu 
             gc.collect() 
             torch.cuda.empty_cache() # Clears unoccupied cached memory
-
-            ic('building database') 
-            rs.build_database(
-                image_path=image_path,
-                results=results_cpu,                             
-                db_path=db_path
-            ) 
 
     ic('FINISHED')
    
