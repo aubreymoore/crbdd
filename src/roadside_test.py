@@ -1,9 +1,22 @@
+"""
+Docstring for roadside_test.py
+
+Aubrey Moore (aubreymoore2013@gmail.com)
+Last modified: 2026-02-19
+
+This python code provides python functions for testing functions for automated detection of coconut rhinoceros beetle 
+damage in digital images provided in roadside.py.
+
+To run all tests, execute the following in a terminal opened in the projects root directory:
+
+uv run -m pytest
+"""
+
 import roadside as rs
 import os
 from icecream import ic
 import gc
 import torch
-
 import numpy as np
 
 

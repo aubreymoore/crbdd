@@ -16,6 +16,7 @@ dependencies = [
     "pandas>=3.0.1",
     "shapely>=2.1.2",
     "icecream>=2.1.10",
+    "pytest>=9.0.2",
 ]
 
 [dependency-groups]
