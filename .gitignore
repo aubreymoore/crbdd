@@ -5,6 +5,13 @@ build/
 dist/
 wheels/
 *.egg-info
+*.ipynb_checkpoints
 
 # Virtual environments
 .venv
+
+# Files too large for GitHub
+sam3.pt
+
+sam3_detections.sqlite3
+

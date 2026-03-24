@@ -9,6 +9,11 @@ Last modified: 2026-02-19
 
 This module provides python functions for building automated detection of coconut rhinoceros beetle 
 damage in digital images.
+
+This package requires `sam3.pt` which contains weights for the SAM3 model.
+You must manually request access via `Hugging Face`.
+Once approved, download the file and place it in your working directory.
+`sam3.pt` is a large file, so include it in your `.gitignore`.
 """
 
 from ultralytics.models.sam import SAM3SemanticPredictor
@@ -101,7 +106,17 @@ def check_gpu():
         return False
 
 
-def run_sam3_semantic_predictor(input_image_path, text_prompts):
+def run_sam3_semantic_predictor(input_image_path: str, text_prompts: list=['coconut palm tree']) -> list:
+    """ 
+    Uses the SAM3 semantic predictor to detect objects specified by text prompts in an image.
+    
+    Inputs:
+      input_image_path relative to working directory 
+      text_prompts: list of text prompts; default: ['coconut palm tree']
+      
+    Outputs:
+      results:     
+    """
     # Initialize predictor with configuration
     overrides = dict(
         conf=0.25,
