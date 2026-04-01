@@ -17,7 +17,7 @@ Once approved, download the file and place it in your working directory.
 """
 
 from ultralytics.models.sam import SAM3SemanticPredictor
-# import cv2
+import cv2
 import numpy as np
 import torch
 import os
@@ -31,12 +31,15 @@ import shapely
 from shapely.geometry import Polygon
 from shapely import wkt
 from shapely.affinity import affine_transform
+from shapely.wkt import loads as wkt_loads
 
 import matplotlib.pyplot as plt
 from scipy.ndimage import median_filter, gaussian_filter1d
 from scipy.spatial.distance import euclidean
 from pathlib import Path
 from icecream import ic
+import textwrap
+import math
 
 
 def flip_wkt_origin(wkt_string:str, image_height:int) -> str:
@@ -205,7 +208,7 @@ def get_data_for_images_table(results_cpu, image_path: str) -> tuple:
 # image_path = image_paths[0]
 # results_gpu = rs.run_sam3_semantic_predictor(input_image_path=image_path, text_prompts=text_prompts)
 # results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
-# delete_results_from_gpu_memory() # Clear GPU memory after processing each image
+# _results_from_gpu_memory() # Clear GPU memory after processing each image
 # get_data_for_images_table(results_cpu)
 
 
@@ -394,4 +397,167 @@ def visualize_harmonics(contour: np.ndarray, harmonic_list: list[int]=[1, 3, 10,
     plt.show()
 
 
+def create_db(db_path: str) -> None:
+    """ Creates an SQLite3 database"""
 
+    # schema SQL script as a string
+    sql_script = textwrap.dedent("""\
+        --- 2026-03-31 17:30
+
+        CREATE TABLE IF NOT EXISTS images (
+        image_id INTEGER PRIMARY KEY,
+        image_path TEXT UNIQUE,
+        image_width INTEGER,
+        image_height INTEGER,
+        timestamp TEXT,
+        latitude REAL,
+        longitude REAL
+        );
+
+        CREATE TABLE IF NOT EXISTS detections (
+        detection_id INTEGER PRIMARY KEY,
+        image_id INTEGER,
+        class_id INTEGER,
+        poly_wkt TEXT,
+        poly_wkt_c TEXT,
+        x_min INTEGER,
+        y_min INTEGER,
+        x_max INTEGER,
+        y_max INTEGER,
+        confidence REAL,
+        is_accepted INTEGER NOT NULL DEFAULT 0,
+        is_healthy INTEGER NOT NULL DEFAULT 0,
+        is_damaged_with_vcuts INTEGER NOT NULL DEFAULT 0,
+        is_damaged_without_vcuts INTEGER NOT NULL DEFAULT 0,
+        is_dead INTEGER NOT NULL DEFAULT 0,
+        is_rejected INTEGER NOT NULL DEFAULT 0,
+        is_crowded INTEGER NOT NULL DEFAULT 0,
+        is_occluded INTEGER NOT NULL DEFAULT 0,
+        has_other_problem INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(image_id) REFERENCES images(image_id) ON DELETE CASCADE 
+        );
+
+        CREATE TABLE IF NOT EXISTS vcuts (
+        vcut_id INTEGER PRIMARY KEY,
+        detection_id INTEGER,
+        start_x INTEGER,
+        start_y INTEGER,
+        far_x INTEGER,
+        far_y INTEGER,        
+        end_x INTEGER,
+        end_y INTEGER,
+        depth REAL,
+        degrees REAL,
+        FOREIGN KEY(detection_id) REFERENCES detections(detection_id) ON DELETE CASCADE
+        );
+        """)
+    
+    # Optional: Remove the database file if it already exists for a clean run
+    if os.path.exists(db_path):
+        os.remove(db_path)
+
+    try:
+        # Establish a connection (creates the DB file if it doesn't exist)
+        conn = sqlite3.connect(db_path)
+        print(f"Database {db_path} created/opened.")
+
+        # Create a cursor object
+        cursor = conn.cursor()
+
+        # Execute the entire SQL script from the string
+        cursor.executescript(sql_script)
+        print("SQL script executed successfully.")
+
+        # Commit the changes
+        conn.commit()
+        print("Changes committed.")
+
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
+        if conn:
+            conn.rollback() # Roll back changes if an error occurs
+
+    finally:
+        # Close the connection
+        if conn:
+            conn.close()
+            print("\nDatabase connection closed.")
+
+# Example usage:
+# create_db("example.db")
+
+
+def wkt2contour(wkt_str):
+    """ Converts WKT polygon string to a contour array suitable for OpenCV functions. """
+    return np.array(
+        list(wkt_loads(wkt_str).exterior.coords), dtype=np.int32).reshape(-1, 1, 2)
+
+
+def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
+    """ 
+    Processes data for a single image. 
+    Returns a pandas dataframe containing data to be added to the `vcuts` table.
+    """
+    # get input data from the images and detections tables
+    sql = """ 
+    SELECT image_path, detection_id, poly_wkt
+    FROM images, detections
+    WHERE images.image_id = detections.image_id
+    """
+    df_input = pd.read_sql(sql, sqlite3.connect(db_path))
+    ic(df_input)
+
+    data_list = [] # list of dicts to be converted to dataframe for insertion into vcuts table
+    for i, r in df_input.iterrows():
+        tree_contour = wkt2contour(r.poly_wkt)
+        hull_indices = cv2.convexHull(tree_contour, returnPoints=False)
+        # ic(i, hull_indices)
+        try:
+            defects = cv2.convexityDefects(tree_contour, hull_indices)
+        except Exception as e:
+            print(f"Error occurred while calculating convexity defects for row {i}: {e}")
+            continue
+        # ic(defects)
+        # ic(defects.shape)
+        
+        # process defects
+        for j, defect in enumerate(defects):
+            
+            start_idx, end_idx, far_idx, depth = defect[0]
+            start_point = tree_contour[start_idx][0]
+            end_point = tree_contour[end_idx][0]
+            far_point = tree_contour[far_idx][0]
+            
+            # calculate length of all sides of triangle in pixels
+            a = math.sqrt((end_point[0] - start_point[0])**2 + (end_point[1] - start_point[1])**2)
+            b = math.sqrt((far_point[0] - start_point[0])**2 + (far_point[1] - start_point[1])**2)
+            c = math.sqrt((end_point[0] - far_point[0])**2 + (end_point[1] - far_point[1])**2)
+            
+            # calculate depth of the convexity defect using Heron's formula in pixels
+            # equals distance between far_point point and base of the triangle (the `a` side) 
+            s = (a+b+c)/2
+            area = math.sqrt(s*(s-a)*(s-b)*(s-c))
+            depth = (2*area)/a # depth is the height of the triangle, which is the distance from the far point to the line formed by the start and end points
+            
+            # calculate the angle of the defect in degrees using the cosine rule
+            angle = math.degrees(math.acos((b**2 + c**2 - a**2)/(2*b*c)))
+            # ic(i, d, angle, start, far, end)
+
+            data_dict = {
+                'detection_id': r.detection_id,
+                'start_x': start_point[0],
+                'start_y': start_point[1],
+                'far_x': far_point[0],
+                'far_y': far_point[1],
+                'end_x': end_point[0],
+                'end_y': end_point[1],
+                'depth': depth,
+                'degrees': angle
+            }
+            data_list.append(data_dict)
+        df_output = pd.DataFrame(data_list)
+    return df_output
+
+# # Usage example:
+# df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=0)
+# df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='delete_rows', index=False)
