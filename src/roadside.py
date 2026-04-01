@@ -14,6 +14,16 @@ This package requires `sam3.pt` which contains weights for the SAM3 model.
 You must manually request access via `Hugging Face`.
 Once approved, download the file and place it in your working directory.
 `sam3.pt` is a large file, so include it in your `.gitignore`.
+
+If you are using `uv` to manage your python environment and dependencies, use this command to keep dependencies up to date:
+```
+uv sync --upgrade
+```
+
+Run test with:
+```
+uv run -m pytest -s -v src/roadside_test.py
+```
 """
 
 from ultralytics.models.sam import SAM3SemanticPredictor
@@ -164,10 +174,10 @@ def run_sam3_semantic_predictor(input_image_path: str, text_prompts: list=['coco
 # print("Processing complete.")
     
     
-def get_data_for_images_table(results_cpu, image_path: str) -> tuple:
+def get_data_for_images_table(results_cpu, image_path: str) -> pd.DataFrame:
     """ 
     Gets data for for a single image for insertion as a record in the 'images' database table. 
-    Returns data as a tuple: (image_width, image_height, timestamp, latitude, longitude)
+    Returns a Pandas dataframe containing image_path, image_width, image_height, timestamp, latitude, longitude)
     image_width and image_height come from results_cpu
     timestamp, latitude, longitude come from the EXIF metadata embedded in the image, if it exists. 
     """
@@ -197,11 +207,20 @@ def get_data_for_images_table(results_cpu, image_path: str) -> tuple:
             longitude = -longitude
         longitude
     else:
-        timestamp = None
-        latitude = None
-        longitude= None
+        timestamp = pd.NA
+        latitude = pd.NA
+        longitude= pd.NA
+        
+    df = pd.DataFrame({
+        'image_path': image_path,
+        'image_width': image_width,
+        'image_height': image_height,
+        'timestamp': timestamp,
+        'latitude': latitude,
+        'longitude': longitude
+    },index=[0])
     
-    return (image_width, image_height, timestamp, latitude, longitude)
+    return df
 
 ## Usage example:
 #
@@ -232,13 +251,21 @@ def get_data_for_detections_table(results_cpu, image_id:int)->pd.DataFrame:
         poly_arr = mask
         poly_wkt = conv_poly_from_array_to_wkt(poly_arr)
         poly_wkt_c = flip_wkt_origin(poly_wkt, image_height=result.orig_shape[0]) # correct for coordinate system origin
+        
+        
+        # ic(poly_arr)
+        hull_indices = cv2.convexHull(poly_arr, returnPoints=False)
+        # ic(hull_indices)
+        hull_indices_string = np_int_array_to_string(hull_indices)
+
 
         masks_data.append({
             # 'image_path': image_path,
             # 'object_index': i, 
             'class_id': df_boxes.iloc[i]['class_id'], 
             'poly_wkt': poly_wkt,
-            'poly_wkt_c': poly_wkt_c
+            'poly_wkt_c': poly_wkt_c,
+            'hull_indices_string': hull_indices_string
         })
     df_masks = pd.DataFrame(masks_data)  
 
@@ -253,14 +280,15 @@ def get_data_for_detections_table(results_cpu, image_id:int)->pd.DataFrame:
 
     return df_detections
 
-## Usage example:
-#
-# image_path = image_paths[0]
-# results_gpu = rs.run_sam3_semantic_predictor(input_image_path=image_path, text_prompts=text_prompts)
+# # Usage example:
+
+# image_path = 'example_images/08hs-palms-03-zglw-superJumbo.webp'
+# text_prompts = ["coconut palm tree"]
+# results_gpu = run_sam3_semantic_predictor(input_image_path=image_path, text_prompts=text_prompts)
 # results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
-# delete_results_from_gpu_memory() # Clear GPU memory after processing each image
+# # delete_results_from_gpu_memory() # Clear GPU memory after processing each image
 # get_data_for_images_table(results_cpu)
-# fake_image_id = 999
+# # fake_image_id = 999
 # get_data_for_detections_table(results_cpu, image_id=fake_image_id)    
 
 
@@ -419,6 +447,7 @@ def create_db(db_path: str) -> None:
         image_id INTEGER,
         class_id INTEGER,
         poly_wkt TEXT,
+        hull_indices_string TEXT,
         poly_wkt_c TEXT,
         x_min INTEGER,
         y_min INTEGER,
@@ -493,14 +522,29 @@ def wkt2contour(wkt_str):
         list(wkt_loads(wkt_str).exterior.coords), dtype=np.int32).reshape(-1, 1, 2)
 
 
+def np_int_array_to_string(arr):
+    """ Converts a numpy array of integers to a space-separated string. """
+    arr_string = np.array2string(arr).replace('\n', '').replace('[', '').replace(']', '')
+    return ' '.join(arr_string.split())
+
+
+def string_to_np_int_array(s):
+    """ Converts a space-separated string of integers back to a numpy array. """
+    return np.fromstring(s, dtype=np.int32, sep=' ').reshape(-1, 1)
+
+
 def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
     """ 
     Processes data for a single image. 
     Returns a pandas dataframe containing data to be added to the `vcuts` table.
+    
+    Presently, all data are sourced from the database. Undoubtedly, this is inefficient. 
+    In the future, I will refactor to source data from the results_cpu variable that is 
+    used for populating the `images` and `detections` tables.
     """
     # get input data from the images and detections tables
     sql = """ 
-    SELECT image_path, detection_id, poly_wkt
+    SELECT image_path, detection_id, poly_wkt, hull_indices_string
     FROM images, detections
     WHERE images.image_id = detections.image_id
     """
@@ -510,8 +554,7 @@ def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
     data_list = [] # list of dicts to be converted to dataframe for insertion into vcuts table
     for i, r in df_input.iterrows():
         tree_contour = wkt2contour(r.poly_wkt)
-        hull_indices = cv2.convexHull(tree_contour, returnPoints=False)
-        # ic(i, hull_indices)
+        hull_indices = string_to_np_int_array(r.hull_indices_string)
         try:
             defects = cv2.convexityDefects(tree_contour, hull_indices)
         except Exception as e:
@@ -561,3 +604,45 @@ def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
 # # Usage example:
 # df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=0)
 # df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='delete_rows', index=False)
+
+
+def test_build_db_with_single_image():
+    image_path = 'example_images/08hs-palms-03-zglw-superJumbo.webp'
+    db_path = 'test.db'    
+    
+    os.remove(db_path) if os.path.exists(db_path) else None
+    
+    # create test database and populate images table and detections table
+    create_db(db_path)
+
+    # run the SAM3 semantic predictor on a test image and get results on CPU for further processing
+    results_gpu = run_sam3_semantic_predictor(
+        input_image_path=image_path, 
+        text_prompts=["coconut palm tree"]
+    )
+    results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
+
+    # Free up GPU memory in preparation for detecting objects in the next image
+    # This is a work-around to prevent out-of-memory errors from the GPU
+    # I move all results for further processing and use the GPU only for object detection.
+    ic('copying results_gpu to results_cpu')
+    results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
+    ic('deleting results_gpu from GPU and clearing caches')       
+    del results_gpu 
+    gc.collect() 
+    torch.cuda.empty_cache() # Clears unoccupied cached memory
+    
+    # populate 'images' table and 'detections' table with data from the test image
+    df_images = get_data_for_images_table(results_cpu=results_cpu, image_path=image_path)
+    df_images.to_sql('images', sqlite3.connect(db_path), if_exists='append', index=False)
+    df_detections = get_data_for_detections_table(results_cpu=results_cpu, image_id=1)
+    df_detections.to_sql('detections', sqlite3.connect(db_path), if_exists='append', index=False)
+    df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=1)
+    df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='append', index=False)
+
+
+# # MAIN
+# test_build_db_with_single_image(
+#     image_path="example_images/08hs-palms-03-zglw-superJumbo.webp",
+#     db_path='test.db'
+# )
