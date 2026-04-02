@@ -606,43 +606,48 @@ def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
 # df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='delete_rows', index=False)
 
 
-def test_build_db_with_single_image():
-    image_path = 'example_images/08hs-palms-03-zglw-superJumbo.webp'
-    db_path = 'test.db'    
+def build_db(db_path, image_paths) -> None:
+    # Implementation for building the database with multiple images
+    create_db(db_path) # create the database and tables
     
+    for image_path in image_paths:
+        # run the SAM3 semantic predictor on a test image and get results on CPU for further processing
+        results_gpu = run_sam3_semantic_predictor(
+            input_image_path=image_path, 
+            text_prompts=["coconut palm tree"]
+        )
+        results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
+
+        # Free up GPU memory in preparation for detecting objects in the next image
+        # This is a work-around to prevent out-of-memory errors from the GPU
+        # I move all results for further processing and use the GPU only for object detection.
+        ic('copying results_gpu to results_cpu')
+        results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
+        ic('deleting results_gpu from GPU and clearing caches')       
+        del results_gpu 
+        gc.collect() 
+        torch.cuda.empty_cache() # Clears unoccupied cached memory
+        
+        # populate 'images' table and 'detections' table with data from the test image
+        df_images = get_data_for_images_table(results_cpu=results_cpu, image_path=image_path)
+        df_images.to_sql('images', sqlite3.connect(db_path), if_exists='append', index=False)
+        image_id = pd.read_sql(
+            "SELECT image_id FROM images WHERE image_path = ?", 
+            sqlite3.connect(db_path), 
+            params=(image_path,)).iloc[0]['image_id']
+        
+        df_detections = get_data_for_detections_table(results_cpu=results_cpu, image_id=image_id)
+        df_detections.to_sql('detections', sqlite3.connect(db_path), if_exists='append', index=False)
+        
+        df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=image_id)
+        df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='append', index=False)
+
+        
+def test_build_db():
+    db_path = 'test.db'
     os.remove(db_path) if os.path.exists(db_path) else None
-    
-    # create test database and populate images table and detections table
-    create_db(db_path)
-
-    # run the SAM3 semantic predictor on a test image and get results on CPU for further processing
-    results_gpu = run_sam3_semantic_predictor(
-        input_image_path=image_path, 
-        text_prompts=["coconut palm tree"]
-    )
-    results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
-
-    # Free up GPU memory in preparation for detecting objects in the next image
-    # This is a work-around to prevent out-of-memory errors from the GPU
-    # I move all results for further processing and use the GPU only for object detection.
-    ic('copying results_gpu to results_cpu')
-    results_cpu = [r.cpu() for r in results_gpu] # copy results to CPU
-    ic('deleting results_gpu from GPU and clearing caches')       
-    del results_gpu 
-    gc.collect() 
-    torch.cuda.empty_cache() # Clears unoccupied cached memory
-    
-    # populate 'images' table and 'detections' table with data from the test image
-    df_images = get_data_for_images_table(results_cpu=results_cpu, image_path=image_path)
-    df_images.to_sql('images', sqlite3.connect(db_path), if_exists='append', index=False)
-    df_detections = get_data_for_detections_table(results_cpu=results_cpu, image_id=1)
-    df_detections.to_sql('detections', sqlite3.connect(db_path), if_exists='append', index=False)
-    df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=1)
-    df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='append', index=False)
-
-
-# # MAIN
-# test_build_db_with_single_image(
-#     image_path="example_images/08hs-palms-03-zglw-superJumbo.webp",
-#     db_path='test.db'
-# )
+    build_db(
+        db_path=db_path, 
+        image_paths=[            
+            "example_images/08hs-palms-03-zglw-superJumbo.webp",
+            "example_images/20251129_152106.jpg"])
