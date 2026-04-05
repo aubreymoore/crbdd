@@ -1,15 +1,16 @@
 """
+
+Note: This code is no longers used and will be removed from the repo at some point.
+
+Tests are being moved into a single source code file: "roadside.py".
+
 Docstring for roadside_test.py
 
 Aubrey Moore (aubreymoore2013@gmail.com)
-Last modified: 2026-02-19
+Last modified: 2026-03-06.
 
-This python code provides python functions for testing functions for automated detection of coconut rhinoceros beetle 
+This python code provides tests for automated detection of coconut rhinoceros beetle 
 damage in digital images provided in roadside.py.
-
-To run all tests, execute the following in a terminal opened in the project root directory:
-
-uv run -m pytest -s
 """
 
 import roadside as rs

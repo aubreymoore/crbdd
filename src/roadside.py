@@ -22,7 +22,7 @@ uv sync --upgrade
 
 Run test with:
 ```
-uv run -m pytest -s -v src/roadside_test.py
+uv run -m pytest -s -v src/roadside.py
 ```
 """
 
