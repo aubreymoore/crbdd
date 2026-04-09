@@ -5,7 +5,7 @@
 Docstring for roadside.py
 
 Aubrey Moore (aubreymoore2013@gmail.com)
-Last modified: 2026-02-19
+Last modified: 2026-03-08
 
 This module provides python functions for building automated detection of coconut rhinoceros beetle 
 damage in digital images.
@@ -249,23 +249,23 @@ def get_data_for_detections_table(results_cpu, image_id:int)->pd.DataFrame:
     # Iterate over each detected object's mask
     for i, mask in enumerate(result.masks.xy):
         poly_arr = mask
-        poly_wkt = conv_poly_from_array_to_wkt(poly_arr)
-        poly_wkt_c = flip_wkt_origin(poly_wkt, image_height=result.orig_shape[0]) # correct for coordinate system origin
+        tree_wkt = conv_poly_from_array_to_wkt(poly_arr)
+        # poly_wkt_c = flip_wkt_origin(poly_wkt, image_height=result.orig_shape[0]) # correct for coordinate system origin
         
         
         # ic(poly_arr)
-        hull_indices = cv2.convexHull(poly_arr, returnPoints=False)
+        # hull_indices = cv2.convexHull(poly_arr, returnPoints=False)
         # ic(hull_indices)
-        hull_indices_string = np_int_array_to_string(hull_indices)
+        # hull_indices_string = np_int_array_to_string(hull_indices)
 
 
         masks_data.append({
             # 'image_path': image_path,
             # 'object_index': i, 
             'class_id': df_boxes.iloc[i]['class_id'], 
-            'poly_wkt': poly_wkt,
-            'poly_wkt_c': poly_wkt_c,
-            'hull_indices_string': hull_indices_string
+            'tree_wkt': tree_wkt,
+            # 'poly_wkt_c': poly_wkt_c,
+            # 'hull_indices_string': hull_indices_string
         })
     df_masks = pd.DataFrame(masks_data)  
 
@@ -280,7 +280,7 @@ def get_data_for_detections_table(results_cpu, image_id:int)->pd.DataFrame:
 
     return df_detections
 
-# # Usage example:
+# Usage example:
 
 # image_path = 'example_images/08hs-palms-03-zglw-superJumbo.webp'
 # text_prompts = ["coconut palm tree"]
@@ -446,22 +446,13 @@ def create_db(db_path: str) -> None:
         detection_id INTEGER PRIMARY KEY,
         image_id INTEGER,
         class_id INTEGER,
-        poly_wkt TEXT,
-        hull_indices_string TEXT,
-        poly_wkt_c TEXT,
+        tree_wkt TEXT,
+        crown_wkt TEXT,
         x_min INTEGER,
         y_min INTEGER,
         x_max INTEGER,
         y_max INTEGER,
         confidence REAL,
-        is_accepted INTEGER NOT NULL DEFAULT 0,
-        is_healthy INTEGER NOT NULL DEFAULT 0,
-        is_damaged_with_vcuts INTEGER NOT NULL DEFAULT 0,
-        is_damaged_without_vcuts INTEGER NOT NULL DEFAULT 0,
-        is_dead INTEGER NOT NULL DEFAULT 0,
-        is_rejected INTEGER NOT NULL DEFAULT 0,
-        is_crowded INTEGER NOT NULL DEFAULT 0,
-        is_occluded INTEGER NOT NULL DEFAULT 0,
         has_other_problem INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY(image_id) REFERENCES images(image_id) ON DELETE CASCADE 
         );
@@ -544,7 +535,7 @@ def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
     """
     # get input data from the images and detections tables
     sql = """ 
-    SELECT image_path, detection_id, poly_wkt, hull_indices_string
+    SELECT image_path, detection_id, tree_wkt
     FROM images, detections
     WHERE images.image_id = detections.image_id
     """
@@ -553,7 +544,7 @@ def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
 
     data_list = [] # list of dicts to be converted to dataframe for insertion into vcuts table
     for i, r in df_input.iterrows():
-        tree_contour = wkt2contour(r.poly_wkt)
+        tree_contour = wkt2contour(r.tree_wkt)
         hull_indices = string_to_np_int_array(r.hull_indices_string)
         try:
             defects = cv2.convexityDefects(tree_contour, hull_indices)
@@ -639,8 +630,8 @@ def build_db(db_path, image_paths) -> None:
         df_detections = get_data_for_detections_table(results_cpu=results_cpu, image_id=image_id)
         df_detections.to_sql('detections', sqlite3.connect(db_path), if_exists='append', index=False)
         
-        df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=image_id)
-        df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='append', index=False)
+        # df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=image_id)
+        # df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='append', index=False)
 
         
 def test_build_db():
