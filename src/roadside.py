@@ -231,6 +231,65 @@ def get_data_for_images_table(results_cpu, image_path: str) -> pd.DataFrame:
 # get_data_for_images_table(results_cpu)
 
 
+#################################
+
+def get_segregate_crown_wkt(tree_mask):
+    contour = rs.wkt2contour(row.tree_wkt)
+    mask = contour2binary_image(row.image_height, row.image_width, contour)
+    # for _, row in df.iterrows():
+    #     img = contour2binary_image(
+    #         image_height=row.image_height, 
+    #         image_width=row.image_width, 
+    #         contour=rs.wkt2contour(row.tree_wkt))
+
+    # mask = img.copy()
+
+    # row_sums is the number of white pixels (value=1) in each row of the mask
+    # row_indices is 0 ... n spanning the number of rows in the image
+    row_sums = np.sum(mask, axis=1)
+    row_indices = np.arange(mask.shape[0])
+
+    # normalized_row_sum is the proportion of mask pixels in each row
+    total_row_sums = np.sum(row_sums, dtype=np.float64)
+    ic(total_row_sums)
+    normalized_row_sums = row_sums / total_row_sums
+    ic(normalized_row_sums)
+    ic(type(normalized_row_sums))
+    ic(np.sum(normalized_row_sums))  # Should be close to 1.0
+
+    # Calculate the difference between consecutive row sums to find where the sum changes significantly
+    # to_begin=0 to keep the same length as row_sums
+    differences = np.ediff1d(normalized_row_sums, to_begin=0) 
+    gaussian_smoothed_differences = gaussian_smooth(differences, window_size=9)
+    ic(gaussian_smoothed_differences)
+
+    # cut_line estimates the y-value which separates the crown from the trunk
+    # the 10 rows of pixels at the bottom of the mask are ignored when finding cut_line
+    # threshold = -0.00002
+    threshold = -0.00004
+    stop_search = -10
+    cut_line = np.max(np.where(gaussian_smoothed_differences[:stop_search] < threshold)).item()
+
+    # segment the crown by removing nonzero pixels from cut_line and below
+    # important: create a copy of mask instead of a view
+    crown_mask = mask.copy()
+    crown_mask[cut_line+1:, :] = 0
+    ic(crown_mask.shape);
+
+    # fit a polygon around the crown mask and convert to wkt text format for database storage
+    contours, _ = cv2.findContours(crown_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    for cnt in contours:
+        crown_poly = np.squeeze(cv2.approxPolyDP(curve=cnt, epsilon=1, closed=True))
+    crown_poly_wkt = rs.conv_poly_from_array_to_wkt(crown_poly)
+    ic(crown_poly_wkt)
+
+
+
+
+
+
+######################################
+
 def get_data_for_detections_table(results_cpu, image_id:int)->pd.DataFrame:
     """ 
     Gets data for for a single image for insertion as records in the 'detections' database table. 
@@ -426,11 +485,11 @@ def visualize_harmonics(contour: np.ndarray, harmonic_list: list[int]=[1, 3, 10,
 
 
 def create_db(db_path: str) -> None:
-    """ Creates an SQLite3 database"""
+    """ Creates an SQLite3 database """
 
     # schema SQL script as a string
     sql_script = textwrap.dedent("""\
-        --- 2026-03-31 17:30
+        --- 2026-04-12 06:21 PST
 
         CREATE TABLE IF NOT EXISTS images (
         image_id INTEGER PRIMARY KEY,
@@ -468,6 +527,7 @@ def create_db(db_path: str) -> None:
         end_y INTEGER,
         depth REAL,
         degrees REAL,
+        emptyness REAL,
         FOREIGN KEY(detection_id) REFERENCES detections(detection_id) ON DELETE CASCADE
         );
         """)
@@ -523,6 +583,85 @@ def string_to_np_int_array(s):
     """ Converts a space-separated string of integers back to a numpy array. """
     return np.fromstring(s, dtype=np.int32, sep=' ').reshape(-1, 1)
 
+
+######################
+
+# This is a MODIFIED copy of get_data_for_vcuts_table() from roadside.py
+
+def get_data_for_vcuts_table2(db_path: str, image_id: int)->pd.DataFrame:
+    """ 
+    Processes data for a single image. 
+    Returns a pandas dataframe containing data to be added to the `vcuts` table.
+    
+    Presently, all data are sourced from the database. Undoubtedly, this is inefficient. 
+    In the future, I will refactor to source data from the results_cpu variable that is 
+    used for populating the `images` and `detections` tables.
+    """
+    
+    # get input data from the images and detections tables
+    sql = f""" 
+    SELECT image_path, detection_id, crown_wkt
+    FROM images, detections
+    WHERE images.image_id=detections.image_id AND images.image_id={image_id}
+    """
+    df_input = pd.read_sql(sql, sqlite3.connect(db_path))
+    # ic(df_input)
+
+    data_list = [] # list of dicts to be converted to dataframe for insertion into vcuts table
+    for i, r in df_input.iterrows():
+        crown_contour = wkt2contour(r.crown_wkt)
+        hull_indices = cv2.convexHull(crown_contour, returnPoints=False)
+        try:
+            defects = cv2.convexityDefects(crown_contour, hull_indices)
+        except Exception as e:
+            print(f"Error occurred while calculating convexity defects for row {i}: {e}")
+            continue
+        # ic(defects)
+        # ic(defects.shape)
+        
+        # process defects
+        for j, defect in enumerate(defects):
+            
+            start_idx, end_idx, far_idx, depth = defect[0]
+            start_point = crown_contour[start_idx][0]
+            end_point = crown_contour[end_idx][0]
+            far_point = crown_contour[far_idx][0]
+            
+            # calculate length of all sides of triangle in pixels
+            a = math.sqrt((end_point[0] - start_point[0])**2 + (end_point[1] - start_point[1])**2)
+            b = math.sqrt((far_point[0] - start_point[0])**2 + (far_point[1] - start_point[1])**2)
+            c = math.sqrt((end_point[0] - far_point[0])**2 + (end_point[1] - far_point[1])**2)
+            
+            # calculate depth of the convexity defect using Heron's formula in pixels
+            # equals distance between far_point point and base of the triangle (the `a` side) 
+            s = (a+b+c)/2
+            area = math.sqrt(s*(s-a)*(s-b)*(s-c))
+            depth = (2*area)/a # depth is the height of the triangle, which is the distance from the far point to the line formed by the start and end points
+            
+            # calculate the angle of the defect in degrees using the cosine rule
+            angle = math.degrees(math.acos((b**2 + c**2 - a**2)/(2*b*c)))
+            # ic(i, d, angle, start, far, end)
+
+            data_dict = {
+                'detection_id': r.detection_id,
+                'start_x': start_point[0],
+                'start_y': start_point[1],
+                'far_x': far_point[0],
+                'far_y': far_point[1],
+                'end_x': end_point[0],
+                'end_y': end_point[1],
+                'depth': depth,
+                'degrees': angle
+            }
+            data_list.append(data_dict)
+        df_output = pd.DataFrame(data_list)
+    return df_output
+
+# Usage example:
+
+# df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=1)
+
+###############################
 
 def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
     """ 
