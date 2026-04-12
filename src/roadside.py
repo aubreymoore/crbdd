@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# Probably best to keep the SQL schema in a separate file so that it can be easily customized, 
+# to add fields and columns for for example.
+
 """
 Docstring for roadside.py
 
@@ -50,6 +53,29 @@ from pathlib import Path
 from icecream import ic
 import textwrap
 import math
+
+def calc_emptiness(crown_mask, start_x, start_y, far_x, far_y, end_x, end_y):
+    """ 
+    Compares a binary mask of a coconut palm crown with a triangle_mask returned by cv2.convexivityDefects().
+    The idea is to see how well the triangle fits a defect in the crown mask.
+    This is down by calculating the proportion of the triangle is intercepted by nonzero pixels in the crown mask.
+    Possible emptiness values range from zero to one. 
+    Values close to one mean that very little foliage is detected within the vcut.
+    """
+    triangle_mask = np.zeros_like(crown_mask, dtype=np.uint8)
+    triangle_points = np.array([[start_x, start_y], [far_x, far_y], [end_x, end_y]])
+    cv2.fillPoly(triangle_mask, [triangle_points], 255)
+    triangle_area = np.count_nonzero(triangle_mask)
+    intersection = cv2.bitwise_and(triangle_mask, crown_mask)
+    intersection_area = np.count_nonzero(intersection)
+    emptiness = 1 - intersection_area / triangle_area
+    return emptiness
+
+# # Usage example:
+# for r in df_vcuts.itertuples():
+#     emptiness = calc_emptiness(crown_mask, r.start_x, r.start_y, r.far_x, r.far_y, r.end_x, r.end_y)
+#     ic(emptiness)
+
 
 
 def flip_wkt_origin(wkt_string:str, image_height:int) -> str:
@@ -233,21 +259,18 @@ def get_data_for_images_table(results_cpu, image_path: str) -> pd.DataFrame:
 
 #################################
 
-def get_segregate_crown_wkt(tree_mask):
-    contour = rs.wkt2contour(row.tree_wkt)
-    mask = contour2binary_image(row.image_height, row.image_width, contour)
-    # for _, row in df.iterrows():
-    #     img = contour2binary_image(
-    #         image_height=row.image_height, 
-    #         image_width=row.image_width, 
-    #         contour=rs.wkt2contour(row.tree_wkt))
-
-    # mask = img.copy()
+def get_crown_wkt(image_height, image_width, tree_wkt: str) -> str:
+    """ 
+    Segregates the crown of a coconut palm from the trunk.
+    Takes tree_wkt as input and returns crown_wkt
+    """
+    tree_contour = wkt2contour(tree_wkt)
+    tree_mask = contour2binary_image(image_height, image_width, tree_contour)
 
     # row_sums is the number of white pixels (value=1) in each row of the mask
     # row_indices is 0 ... n spanning the number of rows in the image
-    row_sums = np.sum(mask, axis=1)
-    row_indices = np.arange(mask.shape[0])
+    row_sums = np.sum(tree_mask, axis=1)
+    row_indices = np.arange(tree_mask.shape[0])
 
     # normalized_row_sum is the proportion of mask pixels in each row
     total_row_sums = np.sum(row_sums, dtype=np.float64)
@@ -272,21 +295,35 @@ def get_segregate_crown_wkt(tree_mask):
 
     # segment the crown by removing nonzero pixels from cut_line and below
     # important: create a copy of mask instead of a view
-    crown_mask = mask.copy()
+    crown_mask = tree_mask.copy()
     crown_mask[cut_line+1:, :] = 0
     ic(crown_mask.shape);
 
     # fit a polygon around the crown mask and convert to wkt text format for database storage
     contours, _ = cv2.findContours(crown_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    assert len(contours)==1, 'number of contours is not equal to one'
     for cnt in contours:
         crown_poly = np.squeeze(cv2.approxPolyDP(curve=cnt, epsilon=1, closed=True))
-    crown_poly_wkt = rs.conv_poly_from_array_to_wkt(crown_poly)
-    ic(crown_poly_wkt)
+    crown_wkt = conv_poly_from_array_to_wkt(crown_poly)
+    
+    return crown_wkt
 
+# Usage example:
 
+# # Get data for first detection record
+# db_path = 'test.db'
+# sql = '''
+# SELECT images.image_id, detection_id, image_height, image_width, tree_wkt
+# FROM images, detections
+# WHERE images.image_id==detections.image_id
+# LIMIT 1
+# '''
+# df = pd.read_sql(sql, sqlite3.connect(db_path))
 
-
-
+# # get crown_wkt
+# for r in df.itertuples():
+#     crown_wkt = get_crown_wkt(r.image_height, r.image_width, r.tree_wkt)
+# return crown_wkt
 
 ######################################
 
@@ -296,8 +333,10 @@ def get_data_for_detections_table(results_cpu, image_id:int)->pd.DataFrame:
     Returns data as a pandas dataframe containing columns for image_id, class_id, poly_wkt, x_min, y_min, x_max, y_max, confidence
     """
 
-    # Process detection results (assuming one image for simplicity: results[0])
+    # Process detection results (assuming one image for simplicity: results,cpu[0])
     result = results_cpu[0]
+    image_height = result.orig_shape[0]
+    image_width = result.orig_shape[1]
 
     # create a pandas dataframe for bounding boxes
     boxes_data = result.boxes.data.tolist()
@@ -309,22 +348,14 @@ def get_data_for_detections_table(results_cpu, image_id:int)->pd.DataFrame:
     for i, mask in enumerate(result.masks.xy):
         poly_arr = mask
         tree_wkt = conv_poly_from_array_to_wkt(poly_arr)
-        # poly_wkt_c = flip_wkt_origin(poly_wkt, image_height=result.orig_shape[0]) # correct for coordinate system origin
-        
-        
-        # ic(poly_arr)
-        # hull_indices = cv2.convexHull(poly_arr, returnPoints=False)
-        # ic(hull_indices)
-        # hull_indices_string = np_int_array_to_string(hull_indices)
-
-
+        crown_wkt = get_crown_wkt(image_height, image_width, tree_wkt)
+ 
         masks_data.append({
             # 'image_path': image_path,
             # 'object_index': i, 
             'class_id': df_boxes.iloc[i]['class_id'], 
             'tree_wkt': tree_wkt,
-            # 'poly_wkt_c': poly_wkt_c,
-            # 'hull_indices_string': hull_indices_string
+            'crown_wkt': crown_wkt,
         })
     df_masks = pd.DataFrame(masks_data)  
 
@@ -527,7 +558,7 @@ def create_db(db_path: str) -> None:
         end_y INTEGER,
         depth REAL,
         degrees REAL,
-        emptyness REAL,
+        emptiness REAL,
         FOREIGN KEY(detection_id) REFERENCES detections(detection_id) ON DELETE CASCADE
         );
         """)
@@ -584,11 +615,7 @@ def string_to_np_int_array(s):
     return np.fromstring(s, dtype=np.int32, sep=' ').reshape(-1, 1)
 
 
-######################
-
-# This is a MODIFIED copy of get_data_for_vcuts_table() from roadside.py
-
-def get_data_for_vcuts_table2(db_path: str, image_id: int)->pd.DataFrame:
+def get_data_for_vcuts_table(db_path: str, image_id: int)->pd.DataFrame:
     """ 
     Processes data for a single image. 
     Returns a pandas dataframe containing data to be added to the `vcuts` table.
@@ -600,7 +627,7 @@ def get_data_for_vcuts_table2(db_path: str, image_id: int)->pd.DataFrame:
     
     # get input data from the images and detections tables
     sql = f""" 
-    SELECT image_path, detection_id, crown_wkt
+    SELECT image_height, image_width, image_path, detection_id, crown_wkt
     FROM images, detections
     WHERE images.image_id=detections.image_id AND images.image_id={image_id}
     """
@@ -610,6 +637,7 @@ def get_data_for_vcuts_table2(db_path: str, image_id: int)->pd.DataFrame:
     data_list = [] # list of dicts to be converted to dataframe for insertion into vcuts table
     for i, r in df_input.iterrows():
         crown_contour = wkt2contour(r.crown_wkt)
+        crown_mask = contour2binary_image(r.image_height, r.image_width, crown_contour)
         hull_indices = cv2.convexHull(crown_contour, returnPoints=False)
         try:
             defects = cv2.convexityDefects(crown_contour, hull_indices)
@@ -641,6 +669,14 @@ def get_data_for_vcuts_table2(db_path: str, image_id: int)->pd.DataFrame:
             # calculate the angle of the defect in degrees using the cosine rule
             angle = math.degrees(math.acos((b**2 + c**2 - a**2)/(2*b*c)))
             # ic(i, d, angle, start, far, end)
+            
+            # calculate emptiness of convexity defect triangle
+            emptiness = calc_emptiness(
+                crown_mask, 
+                start_point[0], start_point[1],
+                far_point[0], far_point[1],
+                end_point[0], end_point[1]
+            )
 
             data_dict = {
                 'detection_id': r.detection_id,
@@ -651,7 +687,8 @@ def get_data_for_vcuts_table2(db_path: str, image_id: int)->pd.DataFrame:
                 'end_x': end_point[0],
                 'end_y': end_point[1],
                 'depth': depth,
-                'degrees': angle
+                'degrees': angle,
+                'emptiness': emptiness
             }
             data_list.append(data_dict)
         df_output = pd.DataFrame(data_list)
@@ -660,80 +697,6 @@ def get_data_for_vcuts_table2(db_path: str, image_id: int)->pd.DataFrame:
 # Usage example:
 
 # df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=1)
-
-###############################
-
-def get_data_for_vcuts_table(db_path, image_id:int)->pd.DataFrame:
-    """ 
-    Processes data for a single image. 
-    Returns a pandas dataframe containing data to be added to the `vcuts` table.
-    
-    Presently, all data are sourced from the database. Undoubtedly, this is inefficient. 
-    In the future, I will refactor to source data from the results_cpu variable that is 
-    used for populating the `images` and `detections` tables.
-    """
-    # get input data from the images and detections tables
-    sql = """ 
-    SELECT image_path, detection_id, tree_wkt
-    FROM images, detections
-    WHERE images.image_id = detections.image_id
-    """
-    df_input = pd.read_sql(sql, sqlite3.connect(db_path))
-    ic(df_input)
-
-    data_list = [] # list of dicts to be converted to dataframe for insertion into vcuts table
-    for i, r in df_input.iterrows():
-        tree_contour = wkt2contour(r.tree_wkt)
-        hull_indices = string_to_np_int_array(r.hull_indices_string)
-        try:
-            defects = cv2.convexityDefects(tree_contour, hull_indices)
-        except Exception as e:
-            print(f"Error occurred while calculating convexity defects for row {i}: {e}")
-            continue
-        # ic(defects)
-        # ic(defects.shape)
-        
-        # process defects
-        for j, defect in enumerate(defects):
-            
-            start_idx, end_idx, far_idx, depth = defect[0]
-            start_point = tree_contour[start_idx][0]
-            end_point = tree_contour[end_idx][0]
-            far_point = tree_contour[far_idx][0]
-            
-            # calculate length of all sides of triangle in pixels
-            a = math.sqrt((end_point[0] - start_point[0])**2 + (end_point[1] - start_point[1])**2)
-            b = math.sqrt((far_point[0] - start_point[0])**2 + (far_point[1] - start_point[1])**2)
-            c = math.sqrt((end_point[0] - far_point[0])**2 + (end_point[1] - far_point[1])**2)
-            
-            # calculate depth of the convexity defect using Heron's formula in pixels
-            # equals distance between far_point point and base of the triangle (the `a` side) 
-            s = (a+b+c)/2
-            area = math.sqrt(s*(s-a)*(s-b)*(s-c))
-            depth = (2*area)/a # depth is the height of the triangle, which is the distance from the far point to the line formed by the start and end points
-            
-            # calculate the angle of the defect in degrees using the cosine rule
-            angle = math.degrees(math.acos((b**2 + c**2 - a**2)/(2*b*c)))
-            # ic(i, d, angle, start, far, end)
-
-            data_dict = {
-                'detection_id': r.detection_id,
-                'start_x': start_point[0],
-                'start_y': start_point[1],
-                'far_x': far_point[0],
-                'far_y': far_point[1],
-                'end_x': end_point[0],
-                'end_y': end_point[1],
-                'depth': depth,
-                'degrees': angle
-            }
-            data_list.append(data_dict)
-        df_output = pd.DataFrame(data_list)
-    return df_output
-
-# # Usage example:
-# df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=0)
-# df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='delete_rows', index=False)
 
 
 def build_db(db_path, image_paths) -> None:
@@ -769,8 +732,8 @@ def build_db(db_path, image_paths) -> None:
         df_detections = get_data_for_detections_table(results_cpu=results_cpu, image_id=image_id)
         df_detections.to_sql('detections', sqlite3.connect(db_path), if_exists='append', index=False)
         
-        # df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=image_id)
-        # df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='append', index=False)
+        df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=image_id)
+        df_vcuts.to_sql('vcuts', sqlite3.connect(db_path), if_exists='append', index=False)
 
         
 def test_build_db():
@@ -781,3 +744,61 @@ def test_build_db():
         image_paths=[            
             "example_images/08hs-palms-03-zglw-superJumbo.webp",
             "example_images/20251129_152106.jpg"])
+    
+def contour2binary_image(image_height, image_width, contour):
+    img = np.zeros((image_height, image_width), dtype=np.uint8)
+    return cv2.drawContours(img, [contour], -1, (255), thickness=cv2.FILLED)
+
+# # Usage example
+# sql =textwrap.dedent("""
+#     select images.image_id, image_height, image_width, poly_wkt
+#     from images, detections
+#     where images.image_id=detections.image_id 
+#     limit 1
+#     """)
+# df = pd.read_sql(sql, sqlite3.connect(db_path))
+# for _, row in df.iterrows():
+#     img = contour2binary_image(
+#         image_height=row.image_height, 
+#         image_width=row.image_width, 
+#         contour=rs.wkt2contour(row.poly_wkt))
+
+
+def gaussian_smooth(data, window_size):
+    window = np.hanning(window_size) # Bell-shaped curve
+    window /= window.sum()           # Normalize
+    return np.convolve(data, window, mode='same')
+
+# # Usage example
+# sql =textwrap.dedent("""
+#     select images.image_id, image_height, image_width, poly_wkt
+#     from images, detections
+#     where images.image_id=detections.image_id 
+#     limit 1
+#     """)
+# df = pd.read_sql(sql, sqlite3.connect(db_path))
+# for _, row in df.iterrows():
+#     img = contour2binary_image(
+#         image_height=row.image_height, 
+#         image_width=row.image_width, 
+#         contour=rs.wkt2contour(row.poly_wkt))
+
+
+    
+# MAIN
+
+# # Get data for first detection record
+# db_path = 'test.db'
+# sql = '''
+# SELECT images.image_id, detection_id, image_height, image_width, tree_wkt
+# FROM images, detections
+# WHERE images.image_id==detections.image_id
+# LIMIT 1
+# '''
+# df = pd.read_sql(sql, sqlite3.connect(db_path))
+
+# # get crown_wkt
+# for r in df.itertuples():
+#     crown_wkt = get_crown_wkt(r.image_height, r.image_width, r.tree_wkt)
+# # ic(crown_wkt)
+
