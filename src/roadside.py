@@ -122,7 +122,7 @@ def create_db(db_file:str='test.db', schema_file:str='default_schema.sql', overw
             conn.close()
 
 # Usage example:
-# create_database()
+# create_db(overwrite=True)
 
 
 def calc_emptiness(crown_mask, start_x, start_y, far_x, far_y, end_x, end_y):

@@ -26,8 +26,7 @@ CREATE TABLE IF NOT EXISTS detections (
     x_max INTEGER,
     y_max INTEGER,
     confidence REAL,
-    has_other_problem INTEGER NOT NULL DEFAULT 0,
-    FOREIGN KEY(image_id) REFERENCES images(id) ON DELETE CASCADE 
+    FOREIGN KEY (image_id) REFERENCES images (id) ON DELETE CASCADE 
 );
 
 CREATE TABLE IF NOT EXISTS vcuts (
@@ -42,5 +41,5 @@ CREATE TABLE IF NOT EXISTS vcuts (
     depth REAL,
     degrees REAL,
     emptiness REAL,
-    FOREIGN KEY(detection_id) REFERENCES detections(id) ON DELETE CASCADE
+    FOREIGN KEY (detection_id) REFERENCES detections (id) ON DELETE CASCADE
 );
