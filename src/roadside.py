@@ -8,7 +8,7 @@
 Docstring for roadside.py
 
 Aubrey Moore (aubreymoore2013@gmail.com)
-Last modified: 2026-03-08
+Last modified: 2026-04-13
 
 This module provides python functions for building automated detection of coconut rhinoceros beetle 
 damage in digital images.
@@ -54,13 +54,90 @@ from icecream import ic
 import textwrap
 import math
 
+import sqlite3
+import os
+
+def create_db(db_file:str='test.db', schema_file:str='default_schema.sql', overwrite:bool=False) -> None:
+    """ 
+    Creates a SQLite database using SQL code stored in a text file.
+    
+    Arguments:    
+        db_file:        file path for database
+        schema_file:    file path for a SQL text file containing code for creating the database
+        overwrite:      if True, db_file is deleted and then recreated
+    
+    Note: 
+        Adding a new table to an existing database by modifying the schema file should be easy. 
+        But adding new fields to existing tables is more complicated.
+ 
+    Here is an example of what the content of a schema file should look like:
+    
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS posts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER,
+        title TEXT NOT NULL,
+        content TEXT,
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    );
+    
+    """
+    
+    if not os.path.exists(schema_file):
+        print(f"Error: The file '{schema_file}' was not found.")
+        return
+    
+    if overwrite:
+        if os.path.exists(db_file):
+            os.remove(db_file)
+            print(f'Existing {db_file} deleted.')
+        
+    try:
+        # Connect to the database (creates it if it doesn't exist)
+        conn = sqlite3.connect(db_file)
+        cursor = conn.cursor()
+
+        # Read the SQL schema from the text file
+        with open(schema_file, 'r') as f:
+            schema_sql = f.read()
+
+        # Execute the script
+        print(f"Applying schema from '{schema_file}' to '{db_file}'...")
+        cursor.executescript(schema_sql)
+        
+        conn.commit()
+        print("Database initialized successfully.")
+
+    except sqlite3.Error as e:
+        print(f"An error occurred: {e}")
+        
+    finally:
+        if conn:
+            conn.close()
+
+# Usage example:
+# create_database()
+
+
 def calc_emptiness(crown_mask, start_x, start_y, far_x, far_y, end_x, end_y):
     """ 
     Compares a binary mask of a coconut palm crown with a triangle_mask returned by cv2.convexivityDefects().
     The idea is to see how well the triangle fits a defect in the crown mask.
-    This is down by calculating the proportion of the triangle is intercepted by nonzero pixels in the crown mask.
-    Possible emptiness values range from zero to one. 
+    'emptiness' is the proportion of the triangle intercepted by nonzero pixels in the crown mask.
     Values close to one mean that very little foliage is detected within the vcut.
+    
+    Inputs:
+        crown_mask:     a binary mask with the same shape as the original image
+        other inputs:   coordinates of a triangle bounding a convexity defect
+        
+    Output: 
+        emptiness:      a proportion, ranging from 0.0 to 1.0
     """
     triangle_mask = np.zeros_like(crown_mask, dtype=np.uint8)
     triangle_points = np.array([[start_x, start_y], [far_x, far_y], [end_x, end_y]])
@@ -313,9 +390,9 @@ def get_crown_wkt(image_height, image_width, tree_wkt: str) -> str:
 # # Get data for first detection record
 # db_path = 'test.db'
 # sql = '''
-# SELECT images.image_id, detection_id, image_height, image_width, tree_wkt
+# SELECT images.id, detection_id, image_height, image_width, tree_wkt
 # FROM images, detections
-# WHERE images.image_id==detections.image_id
+# WHERE images.id==detections.image_id
 # LIMIT 1
 # '''
 # df = pd.read_sql(sql, sqlite3.connect(db_path))
@@ -515,87 +592,87 @@ def visualize_harmonics(contour: np.ndarray, harmonic_list: list[int]=[1, 3, 10,
     plt.show()
 
 
-def create_db(db_path: str) -> None:
-    """ Creates an SQLite3 database """
+# def create_db(db_path: str) -> None:
+#     """ Creates an SQLite3 database """
 
-    # schema SQL script as a string
-    sql_script = textwrap.dedent("""\
-        --- 2026-04-12 06:21 PST
+#     # schema SQL script as a string
+#     sql_script = textwrap.dedent("""\
+#         --- 2026-04-12 06:21 PST
 
-        CREATE TABLE IF NOT EXISTS images (
-        image_id INTEGER PRIMARY KEY,
-        image_path TEXT UNIQUE,
-        image_width INTEGER,
-        image_height INTEGER,
-        timestamp TEXT,
-        latitude REAL,
-        longitude REAL
-        );
+#         CREATE TABLE IF NOT EXISTS images (
+#         image_id INTEGER PRIMARY KEY,
+#         image_path TEXT UNIQUE,
+#         image_width INTEGER,
+#         image_height INTEGER,
+#         timestamp TEXT,
+#         latitude REAL,
+#         longitude REAL
+#         );
 
-        CREATE TABLE IF NOT EXISTS detections (
-        detection_id INTEGER PRIMARY KEY,
-        image_id INTEGER,
-        class_id INTEGER,
-        tree_wkt TEXT,
-        crown_wkt TEXT,
-        x_min INTEGER,
-        y_min INTEGER,
-        x_max INTEGER,
-        y_max INTEGER,
-        confidence REAL,
-        has_other_problem INTEGER NOT NULL DEFAULT 0,
-        FOREIGN KEY(image_id) REFERENCES images(image_id) ON DELETE CASCADE 
-        );
+#         CREATE TABLE IF NOT EXISTS detections (
+#         detection_id INTEGER PRIMARY KEY,
+#         image_id INTEGER,
+#         class_id INTEGER,
+#         tree_wkt TEXT,
+#         crown_wkt TEXT,
+#         x_min INTEGER,
+#         y_min INTEGER,
+#         x_max INTEGER,
+#         y_max INTEGER,
+#         confidence REAL,
+#         has_other_problem INTEGER NOT NULL DEFAULT 0,
+#         FOREIGN KEY(image_id) REFERENCES images(image_id) ON DELETE CASCADE 
+#         );
 
-        CREATE TABLE IF NOT EXISTS vcuts (
-        vcut_id INTEGER PRIMARY KEY,
-        detection_id INTEGER,
-        start_x INTEGER,
-        start_y INTEGER,
-        far_x INTEGER,
-        far_y INTEGER,        
-        end_x INTEGER,
-        end_y INTEGER,
-        depth REAL,
-        degrees REAL,
-        emptiness REAL,
-        FOREIGN KEY(detection_id) REFERENCES detections(detection_id) ON DELETE CASCADE
-        );
-        """)
+#         CREATE TABLE IF NOT EXISTS vcuts (
+#         vcut_id INTEGER PRIMARY KEY,
+#         detection_id INTEGER,
+#         start_x INTEGER,
+#         start_y INTEGER,
+#         far_x INTEGER,
+#         far_y INTEGER,        
+#         end_x INTEGER,
+#         end_y INTEGER,
+#         depth REAL,
+#         degrees REAL,
+#         emptiness REAL,
+#         FOREIGN KEY(detection_id) REFERENCES detections(detection_id) ON DELETE CASCADE
+#         );
+#         """)
     
-    # Optional: Remove the database file if it already exists for a clean run
-    if os.path.exists(db_path):
-        os.remove(db_path)
+#     # Optional: Remove the database file if it already exists for a clean run
+#     if os.path.exists(db_path):
+#         os.remove(db_path)
 
-    try:
-        # Establish a connection (creates the DB file if it doesn't exist)
-        conn = sqlite3.connect(db_path)
-        print(f"Database {db_path} created/opened.")
+#     try:
+#         # Establish a connection (creates the DB file if it doesn't exist)
+#         conn = sqlite3.connect(db_path)
+#         print(f"Database {db_path} created/opened.")
 
-        # Create a cursor object
-        cursor = conn.cursor()
+#         # Create a cursor object
+#         cursor = conn.cursor()
 
-        # Execute the entire SQL script from the string
-        cursor.executescript(sql_script)
-        print("SQL script executed successfully.")
+#         # Execute the entire SQL script from the string
+#         cursor.executescript(sql_script)
+#         print("SQL script executed successfully.")
 
-        # Commit the changes
-        conn.commit()
-        print("Changes committed.")
+#         # Commit the changes
+#         conn.commit()
+#         print("Changes committed.")
 
-    except sqlite3.Error as e:
-        print(f"An error occurred: {e}")
-        if conn:
-            conn.rollback() # Roll back changes if an error occurs
+#     except sqlite3.Error as e:
+#         print(f"An error occurred: {e}")
+#         if conn:
+#             conn.rollback() # Roll back changes if an error occurs
 
-    finally:
-        # Close the connection
-        if conn:
-            conn.close()
-            print("\nDatabase connection closed.")
+#     finally:
+#         # Close the connection
+#         if conn:
+#             conn.close()
+#             print("\nDatabase connection closed.")
 
-# Example usage:
-# create_db("example.db")
+# # Example usage:
+# # create_db("example.db")
 
 
 def wkt2contour(wkt_str):
@@ -627,9 +704,9 @@ def get_data_for_vcuts_table(db_path: str, image_id: int)->pd.DataFrame:
     
     # get input data from the images and detections tables
     sql = f""" 
-    SELECT image_height, image_width, image_path, detection_id, crown_wkt
+    SELECT image_height, image_width, image_path, detections.id AS detection_id, crown_wkt
     FROM images, detections
-    WHERE images.image_id=detections.image_id AND images.image_id={image_id}
+    WHERE images.id=detections.image_id AND images.id={image_id}
     """
     df_input = pd.read_sql(sql, sqlite3.connect(db_path))
     # ic(df_input)
@@ -725,9 +802,9 @@ def build_db(db_path, image_paths) -> None:
         df_images = get_data_for_images_table(results_cpu=results_cpu, image_path=image_path)
         df_images.to_sql('images', sqlite3.connect(db_path), if_exists='append', index=False)
         image_id = pd.read_sql(
-            "SELECT image_id FROM images WHERE image_path = ?", 
+            "SELECT id FROM images WHERE image_path = ?", 
             sqlite3.connect(db_path), 
-            params=(image_path,)).iloc[0]['image_id']
+            params=(image_path,)).iloc[0]['id']
         
         df_detections = get_data_for_detections_table(results_cpu=results_cpu, image_id=image_id)
         df_detections.to_sql('detections', sqlite3.connect(db_path), if_exists='append', index=False)
@@ -751,9 +828,9 @@ def contour2binary_image(image_height, image_width, contour):
 
 # # Usage example
 # sql =textwrap.dedent("""
-#     select images.image_id, image_height, image_width, poly_wkt
+#     select images.id, image_height, image_width, poly_wkt
 #     from images, detections
-#     where images.image_id=detections.image_id 
+#     where images.id=detections.image_id 
 #     limit 1
 #     """)
 # df = pd.read_sql(sql, sqlite3.connect(db_path))
@@ -771,9 +848,9 @@ def gaussian_smooth(data, window_size):
 
 # # Usage example
 # sql =textwrap.dedent("""
-#     select images.image_id, image_height, image_width, poly_wkt
+#     select images.id, image_height, image_width, poly_wkt
 #     from images, detections
-#     where images.image_id=detections.image_id 
+#     where images.id=detections.image_id 
 #     limit 1
 #     """)
 # df = pd.read_sql(sql, sqlite3.connect(db_path))
@@ -790,9 +867,9 @@ def gaussian_smooth(data, window_size):
 # # Get data for first detection record
 # db_path = 'test.db'
 # sql = '''
-# SELECT images.image_id, detection_id, image_height, image_width, tree_wkt
+# SELECT images.id, detection_id, image_height, image_width, tree_wkt
 # FROM images, detections
-# WHERE images.image_id==detections.image_id
+# WHERE images.id==detections.image_id
 # LIMIT 1
 # '''
 # df = pd.read_sql(sql, sqlite3.connect(db_path))

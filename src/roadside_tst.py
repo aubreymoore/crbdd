@@ -80,7 +80,7 @@ def test_all2() -> None:
     
     assert rs.check_gpu(), 'ERROR: GPU is unavailable.'
 
-    rs.create_db(db_path)
+    rs.create_db(db_path, overwrite=True)
     con = sqlite3.connect(db_path)
 
     # scan images and populate database
