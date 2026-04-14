@@ -73,18 +73,18 @@ def create_db(db_file:str='test.db', schema_file:str='default_schema.sql', overw
     Here is an example of what the content of a schema file should look like:
     
     CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE IF NOT EXISTS posts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        post_id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
         title TEXT NOT NULL,
         content TEXT,
-        FOREIGN KEY (user_id) REFERENCES users (id)
+        FOREIGN KEY (user_id) REFERENCES users (user_id)
     );
     
     """
@@ -704,9 +704,11 @@ def get_data_for_vcuts_table(db_path: str, image_id: int)->pd.DataFrame:
     
     # get input data from the images and detections tables
     sql = f""" 
-    SELECT image_height, image_width, image_path, detections.id AS detection_id, crown_wkt
+    SELECT image_height, image_width, image_path, detections.detection_id, crown_wkt
     FROM images, detections
-    WHERE images.id=detections.image_id AND images.id={image_id}
+    WHERE 
+        images.image_id=detections.image_id AND 
+        images.image_id={image_id}
     """
     df_input = pd.read_sql(sql, sqlite3.connect(db_path))
     # ic(df_input)
@@ -802,9 +804,9 @@ def build_db(db_path, image_paths) -> None:
         df_images = get_data_for_images_table(results_cpu=results_cpu, image_path=image_path)
         df_images.to_sql('images', sqlite3.connect(db_path), if_exists='append', index=False)
         image_id = pd.read_sql(
-            "SELECT id FROM images WHERE image_path = ?", 
+            "SELECT image_id FROM images WHERE image_path = ?", 
             sqlite3.connect(db_path), 
-            params=(image_path,)).iloc[0]['id']
+            params=(image_path,)).iloc[0]['image_id']
         
         df_detections = get_data_for_detections_table(results_cpu=results_cpu, image_id=image_id)
         df_detections.to_sql('detections', sqlite3.connect(db_path), if_exists='append', index=False)

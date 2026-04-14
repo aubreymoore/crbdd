@@ -6,7 +6,7 @@ Purpose:
 */
 
 CREATE TABLE IF NOT EXISTS images (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    image_id INTEGER PRIMARY KEY AUTOINCREMENT,
     image_path TEXT UNIQUE,
     image_width INTEGER,
     image_height INTEGER,
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS images (
 );
 
 CREATE TABLE IF NOT EXISTS detections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    detection_id INTEGER PRIMARY KEY AUTOINCREMENT,
     image_id INTEGER,
     class_id INTEGER,
     tree_wkt TEXT,
@@ -26,11 +26,11 @@ CREATE TABLE IF NOT EXISTS detections (
     x_max INTEGER,
     y_max INTEGER,
     confidence REAL,
-    FOREIGN KEY (image_id) REFERENCES images (id) ON DELETE CASCADE 
+    FOREIGN KEY (image_id) REFERENCES images (image_id) ON DELETE CASCADE 
 );
 
 CREATE TABLE IF NOT EXISTS vcuts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vcut_id INTEGER PRIMARY KEY AUTOINCREMENT,
     detection_id INTEGER,
     start_x INTEGER,
     start_y INTEGER,
@@ -41,5 +41,5 @@ CREATE TABLE IF NOT EXISTS vcuts (
     depth REAL,
     degrees REAL,
     emptiness REAL,
-    FOREIGN KEY (detection_id) REFERENCES detections (id) ON DELETE CASCADE
+    FOREIGN KEY (detection_id) REFERENCES detections (detection_id) ON DELETE CASCADE
 );

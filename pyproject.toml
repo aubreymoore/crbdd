@@ -18,6 +18,7 @@ dependencies = [
     "icecream>=2.1.10",
     "pytest>=9.0.2",
     "jupyter>=1.1.1",
+    "graphviz>=0.21",
 ]
 
 [dependency-groups]
