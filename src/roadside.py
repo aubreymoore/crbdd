@@ -18,6 +18,16 @@ You must manually request access via `Hugging Face`.
 Once approved, download the file and place it in your working directory.
 `sam3.pt` is a large file, so include it in your `.gitignore`.
 
+If you are using 'uv' to manage your python environment and dependencies, install the module using:
+```
+uv add git+https://github.com/aubreymoore/crbdd
+```
+
+Then, import the module into your Python script or Jupyter notebook using:
+```
+import roadside as rs
+```
+
 If you are using `uv` to manage your python environment and dependencies, use this command to keep dependencies up to date:
 ```
 uv sync --upgrade
