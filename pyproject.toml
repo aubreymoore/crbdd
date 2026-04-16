@@ -19,6 +19,7 @@ dependencies = [
     "pytest>=9.0.2",
     "jupyter>=1.1.1",
     "graphviz>=0.21",
+    "pooch>=1.9.0",
 ]
 
 [dependency-groups]

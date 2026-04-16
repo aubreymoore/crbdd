@@ -63,9 +63,51 @@ from pathlib import Path
 from icecream import ic
 import textwrap
 import math
+import pooch
 
-import sqlite3
-import os
+
+def ensure_data_file(url, filename, expected_hash, download_dir="."):
+    """
+    Checks for a file locally and downloads it via Pooch if missing or corrupted.
+    
+    Args:
+        url (str): The direct download link.
+        filename (str): The desired name for the local file.
+        expected_hash (str): The SHA256 hash for integrity verification.
+        download_dir (str): The directory to store the file. Defaults to current dir.
+        
+    Returns:
+        Path: The absolute path to the ready-to-use file.
+        
+    pooch.retrieve logic:
+    
+        1. Checks if 'filename' exists in 'path'
+        2. If it exists, verifies the hash
+        3. If it doesn't exist (or hash fails), it downloads from 'url'  
+    """
+    # Create the directory if it doesn't exist
+    target_dir = Path(download_dir).expanduser().resolve()
+    target_dir.mkdir(parents=True, exist_ok=True)
+    local_path = pooch.retrieve(
+        url=url,
+        known_hash=expected_hash,
+        fname=filename,
+        path=target_dir
+    )
+    
+    return Path(local_path)
+
+# --- Example Usage ---
+if __name__ == "__main__":
+    my_file = ensure_data_file(
+        url="https://github.com/aubreymoore/crbdd/raw/main/example_data/default_schema.sql",
+        filename="default_schema.sql",
+        expected_hash=None,
+        download_dir="./data_cache"
+    )
+    
+    print(f"File is located at: {my_file}")
+            
 
 def create_db(db_file:str='test.db', schema_file:str='default_schema.sql', overwrite:bool=False) -> None:
     """ 

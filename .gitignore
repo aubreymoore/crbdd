@@ -10,6 +10,8 @@ wheels/
 # Virtual environments
 .venv
 
+data_cache/
+
 # Files too large for GitHub
 sam3.pt
 
