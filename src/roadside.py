@@ -65,6 +65,7 @@ import textwrap
 import math
 import pooch
 
+print(__name__)
 
 def ensure_data_file(url, filename, expected_hash, download_dir="."):
     """
@@ -98,15 +99,16 @@ def ensure_data_file(url, filename, expected_hash, download_dir="."):
     return Path(local_path)
 
 # --- Example Usage ---
-if __name__ == "__main__":
-    my_file = ensure_data_file(
-        url="https://github.com/aubreymoore/crbdd/raw/main/example_data/default_schema.sql",
-        filename="default_schema.sql",
-        expected_hash=None,
-        download_dir="./data_cache"
-    )
+
+# if __name__ == "__main__":
+#     my_file = ensure_data_file(
+#         url="https://github.com/aubreymoore/crbdd/raw/main/example_data/default_schema.sql",
+#         filename="default_schema.sql",
+#         expected_hash='422cbea20efdfebf4b9a37dc011b73f90d1bd00f0afb9f6f8bdf7277b9d4707f',
+#         download_dir="./data_cache"
+#     )
     
-    print(f"File is located at: {my_file}")
+#     print(f"File is located at: {my_file}")
             
 
 def create_db(db_file:str='test.db', schema_file:str='default_schema.sql', overwrite:bool=False) -> None:
