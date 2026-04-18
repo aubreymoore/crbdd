@@ -37,6 +37,13 @@ Run test with:
 ```
 uv run -m pytest -s -v src/roadside.py
 ```
+
+- `data_cache` is a temporary directory 
+    - listed in .
+    - save only ephemeral files in this dir
+    - may be deleted prior to testing
+- `example_data` is an important directory 
+    - contains resources for the roadside module
 """
 
 from ultralytics.models.sam import SAM3SemanticPredictor
@@ -872,11 +879,12 @@ def build_db(db_path, image_paths) -> None:
 def test_build_db():
     db_path = 'test.db'
     os.remove(db_path) if os.path.exists(db_path) else None
+    
     build_db(
         db_path=db_path, 
         image_paths=[            
-            "example_images/08hs-palms-03-zglw-superJumbo.webp",
-            "example_images/20251129_152106.jpg"])
+            "example_data/example_images/08hs-palms-03-zglw-superJumbo.webp",
+            "example_data/example_images/20251129_152106.jpg"])
     
 def contour2binary_image(image_height, image_width, contour):
     img = np.zeros((image_height, image_width), dtype=np.uint8)
@@ -916,22 +924,30 @@ def gaussian_smooth(data, window_size):
 #         image_width=row.image_width, 
 #         contour=rs.wkt2contour(row.poly_wkt))
 
-
-    
+   
 # MAIN
 
-# # Get data for first detection record
-# db_path = 'test.db'
-# sql = '''
-# SELECT images.id, detection_id, image_height, image_width, tree_wkt
-# FROM images, detections
-# WHERE images.id==detections.image_id
-# LIMIT 1
-# '''
-# df = pd.read_sql(sql, sqlite3.connect(db_path))
+# Code below the next line will be executes whenever roadside.py is run or imported
+if __name__ == "__main__":
+    print('running roadside.py')
+    
+    print('ensuring database schema exists')
+    ensure_data_file(
+        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/default_schema.sql', 
+        filename='default_schema.sql', 
+        expected_hash='422cbea20efdfebf4b9a37dc011b73f90d1bd00f0afb9f6f8bdf7277b9d4707f', 
+        download_dir='.')
+    
+    print('ensuring example image 1 exists')
+    ensure_data_file(
+        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/example_images/08hs-palms-03-zglw-superJumbo.webp', 
+        filename='08hs-palms-03-zglw-superJumbo.webp', 
+        expected_hash='3d814a497a5c9aedd1baed6d2c962d10af24df2679cd3b826c8ccf7a08b614a7', 
+        download_dir='./data_cache/example_images')
 
-# # get crown_wkt
-# for r in df.itertuples():
-#     crown_wkt = get_crown_wkt(r.image_height, r.image_width, r.tree_wkt)
-# # ic(crown_wkt)
-
+    print('ensuring example image 2 exists')
+    ensure_data_file(
+        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/example_images/20251129_152106.jpg', 
+        filename='20251129_152106.jpg', 
+        expected_hash='1e469771c859bfafe0c3a3ec1ec9a160f3ffac44d9b64112d6e3f0431dc6690b', 
+        download_dir='./data_cache/example_images')
