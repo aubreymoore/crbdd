@@ -71,6 +71,7 @@ from icecream import ic
 import textwrap
 import math
 import pooch
+import tomllib
 
 print(__name__)
 
@@ -931,17 +932,29 @@ def ensure_config_file_exists(filename='config.toml'):
         expected_hash='422cbea20efdfebf4b9a37dc011b73f90d1bd00f0afb9f6f8bdf7277b9d4707f', 
         download_dir='.')
     
-def get_config():
-    print('ensuring configuration file')
+def get_config() -> dict:
+    """ 
+    Ensures `config.toml` exists. If it doesn't, it will be downloaded from the GitHub repository.
+    This function should be put at the top of python code which uses the `roadside` module.
+    Returns a dict containing config keys and values.
+    """
+    print('ensuring configuration file exists')
     ensure_data_file(
         url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/resources/config.toml', 
         filename='config.toml', 
-        expected_hash='422cbea20efdfebf4b9a37dc011b73f90d1bd00f0afb9f6f8bdf7277b9d4707f', 
-        download_dir='.')
+        expected_hash=None, 
+        download_dir='data_cache')
+    with open("data_cache/config.toml", mode="rb") as f:
+        config = tomllib.load(f)
+    return config
+
     
-# Usage example
-# get_config()
-    
+# # Usage example
+# config = get_config()
+# with open("data_cache/config.toml", mode="rb") as f:
+#     config = tomllib.load(f)
+# print(config)
+   
    
 # MAIN
 

@@ -1,0 +1,38 @@
+default_schema.sql = """
+    CREATE TABLE IF NOT EXISTS images (
+        image_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_path TEXT UNIQUE,
+        image_width INTEGER,
+        image_height INTEGER,
+        timestamp TEXT,
+        latitude REAL,
+        longitude REAL
+    );
+    CREATE TABLE IF NOT EXISTS detections (
+        detection_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        image_id INTEGER,
+        class_id INTEGER,
+        tree_wkt TEXT,
+        crown_wkt TEXT,
+        x_min INTEGER,
+        y_min INTEGER,
+        x_max INTEGER,
+        y_max INTEGER,
+        confidence REAL,
+        FOREIGN KEY (image_id) REFERENCES images (image_id) ON DELETE CASCADE 
+    );
+    CREATE TABLE IF NOT EXISTS vcuts (
+        vcut_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        detection_id INTEGER,
+        start_x INTEGER,
+        start_y INTEGER,
+        far_x INTEGER,
+        far_y INTEGER,        
+        end_x INTEGER,
+        end_y INTEGER,
+        depth REAL,
+        degrees REAL,
+        emptiness REAL,
+        FOREIGN KEY (detection_id) REFERENCES detections (detection_id) ON DELETE CASCADE
+    );
+"""
