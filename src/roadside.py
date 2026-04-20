@@ -924,30 +924,48 @@ def gaussian_smooth(data, window_size):
 #         image_width=row.image_width, 
 #         contour=rs.wkt2contour(row.poly_wkt))
 
-   
-# MAIN
-
-# Code below the next line will be executes whenever roadside.py is run or imported
-if __name__ == "__main__":
-    print('running roadside.py')
-    
-    print('ensuring database schema exists')
+def ensure_config_file_exists(filename='config.toml'):
     ensure_data_file(
         url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/default_schema.sql', 
         filename='default_schema.sql', 
         expected_hash='422cbea20efdfebf4b9a37dc011b73f90d1bd00f0afb9f6f8bdf7277b9d4707f', 
         download_dir='.')
     
-    print('ensuring example image 1 exists')
+def get_config():
+    print('ensuring configuration file')
     ensure_data_file(
-        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/example_images/08hs-palms-03-zglw-superJumbo.webp', 
-        filename='08hs-palms-03-zglw-superJumbo.webp', 
-        expected_hash='3d814a497a5c9aedd1baed6d2c962d10af24df2679cd3b826c8ccf7a08b614a7', 
-        download_dir='./data_cache/example_images')
+        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/resources/config.toml', 
+        filename='config.toml', 
+        expected_hash='422cbea20efdfebf4b9a37dc011b73f90d1bd00f0afb9f6f8bdf7277b9d4707f', 
+        download_dir='.')
+    
+# Usage example
+# get_config()
+    
+   
+# MAIN
 
-    print('ensuring example image 2 exists')
-    ensure_data_file(
-        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/example_images/20251129_152106.jpg', 
-        filename='20251129_152106.jpg', 
-        expected_hash='1e469771c859bfafe0c3a3ec1ec9a160f3ffac44d9b64112d6e3f0431dc6690b', 
-        download_dir='./data_cache/example_images')
+# Code below the next line will be executes whenever roadside.py is run or imported
+# if __name__ == "__main__":
+#     print('running roadside.py')
+    
+#     print('ensuring database schema exists')
+#     ensure_data_file(
+#         url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/default_schema.sql', 
+#         filename='default_schema.sql', 
+#         expected_hash='422cbea20efdfebf4b9a37dc011b73f90d1bd00f0afb9f6f8bdf7277b9d4707f', 
+#         download_dir='.')
+    
+#     print('ensuring example image 1 exists')
+#     ensure_data_file(
+#         url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/example_images/08hs-palms-03-zglw-superJumbo.webp', 
+#         filename='08hs-palms-03-zglw-superJumbo.webp', 
+#         expected_hash='3d814a497a5c9aedd1baed6d2c962d10af24df2679cd3b826c8ccf7a08b614a7', 
+#         download_dir='./data_cache/example_images')
+
+#     print('ensuring example image 2 exists')
+#     ensure_data_file(
+#         url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/example_data/example_images/20251129_152106.jpg', 
+#         filename='20251129_152106.jpg', 
+#         expected_hash='1e469771c859bfafe0c3a3ec1ec9a160f3ffac44d9b64112d6e3f0431dc6690b', 
+#         download_dir='./data_cache/example_images')
