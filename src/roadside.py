@@ -119,20 +119,20 @@ def ensure_data_file(url, filename, expected_hash, download_dir="."):
 #     print(f"File is located at: {my_file}")
             
 
-def create_db(db_file:str='test.db', schema_file:str='default_schema.sql', overwrite:bool=False) -> None:
+def create_db(db_file:str='test.db', schema_sql:str='default_schema_sql', overwrite:bool=False) -> None:
     """ 
     Creates a SQLite database using SQL code stored in a text file.
     
     Arguments:    
         db_file:        file path for database
-        schema_file:    file path for a SQL text file containing code for creating the database
+        schema_file:    a string containing SQL code for creating the database
         overwrite:      if True, db_file is deleted and then recreated
     
     Note: 
         Adding a new table to an existing database by modifying the schema file should be easy. 
         But adding new fields to existing tables is more complicated.
  
-    Here is an example of what the content of a schema file should look like:
+    Here is an example of what the schema should look like:
     
     CREATE TABLE IF NOT EXISTS users (
         user_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -151,26 +151,12 @@ def create_db(db_file:str='test.db', schema_file:str='default_schema.sql', overw
     
     """
     
-    if not os.path.exists(schema_file):
-        print(f"Error: The file '{schema_file}' was not found.")
-        return
-    
-    if overwrite:
-        if os.path.exists(db_file):
-            os.remove(db_file)
-            print(f'Existing {db_file} deleted.')
-        
     try:
         # Connect to the database (creates it if it doesn't exist)
         conn = sqlite3.connect(db_file)
         cursor = conn.cursor()
 
-        # Read the SQL schema from the text file
-        with open(schema_file, 'r') as f:
-            schema_sql = f.read()
-
-        # Execute the script
-        print(f"Applying schema from '{schema_file}' to '{db_file}'...")
+        # Execute the schema script
         cursor.executescript(schema_sql)
         
         conn.commit()
@@ -840,9 +826,9 @@ def get_data_for_vcuts_table(db_path: str, image_id: int)->pd.DataFrame:
 # df_vcuts = get_data_for_vcuts_table(db_path=db_path, image_id=1)
 
 
-def build_db(db_path, image_paths) -> None:
+def build_db(db_path, image_paths, schema_sql) -> None:
     # Implementation for building the database with multiple images
-    create_db(db_path) # create the database and tables
+    create_db(db_file=db_path, schema_sql=schema_sql) # create the database and tables
     
     for image_path in image_paths:
         # run the SAM3 semantic predictor on a test image and get results on CPU for further processing
@@ -878,16 +864,36 @@ def build_db(db_path, image_paths) -> None:
 
         
 def test_build_db():
+    
+    # get configuration values needed for this test
     config = get_config()
+    schema_sql = config['default_schema_sql']
+    db_path = config['db_path']
     
-    db_path = 'test.db'
+    # get example images
+    ensure_data_file(
+        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/resources/example_images/08hs-palms-03-zglw-superJumbo.webp', 
+        filename='08hs-palms-03-zglw-superJumbo.webp', 
+        expected_hash=None, 
+        download_dir='data_cache/example_images')
+    ensure_data_file(
+        url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/resources/example_images/20251129_152106.jpg', 
+        filename='20251129_152106.jpg', 
+        expected_hash=None, 
+        download_dir='data_cache/example_images')
+    
+    # build a new db
     os.remove(db_path) if os.path.exists(db_path) else None
-    
     build_db(
         db_path=db_path, 
         image_paths=[            
-            "example_data/example_images/08hs-palms-03-zglw-superJumbo.webp",
-            "example_data/example_images/20251129_152106.jpg"])
+            "data_cache/example_images/08hs-palms-03-zglw-superJumbo.webp",
+            "data_cache/example_images/20251129_152106.jpg"],
+        schema_sql=schema_sql)
+
+# Usage example:
+# test_build_db()
+ 
     
 def contour2binary_image(image_height, image_width, contour):
     img = np.zeros((image_height, image_width), dtype=np.uint8)
@@ -961,7 +967,11 @@ def get_config() -> dict:
 # MAIN
 
 # Code below the next line will be executes whenever roadside.py is run or imported
-# if __name__ == "__main__":
+if __name__ == "__main__":
+    pass
+    # test_build_db()
+
+
 #     print('running roadside.py')
     
 #     print('ensuring database schema exists')
