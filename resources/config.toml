@@ -36,3 +36,5 @@ default_schema_sql = """
         FOREIGN KEY (detection_id) REFERENCES detections (detection_id) ON DELETE CASCADE
     );
 """
+
+db_path = 'test.db'

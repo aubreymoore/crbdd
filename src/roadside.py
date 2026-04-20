@@ -878,6 +878,8 @@ def build_db(db_path, image_paths) -> None:
 
         
 def test_build_db():
+    config = get_config()
+    
     db_path = 'test.db'
     os.remove(db_path) if os.path.exists(db_path) else None
     
@@ -938,7 +940,6 @@ def get_config() -> dict:
     This function should be put at the top of python code which uses the `roadside` module.
     Returns a dict containing config keys and values. 
     """
-    print('ensuring configuration file exists')
     ensure_data_file(
         url='https://raw.githubusercontent.com/aubreymoore/crbdd/main/resources/config.toml', 
         filename='config.toml', 
@@ -954,7 +955,7 @@ def get_config() -> dict:
 # with open("data_cache/config.toml", mode="rb") as f:
 #     config = tomllib.load(f)
 # print(f'key list: {config.keys()}')
-# print(f'default_shema_sql: {config["default_schema_sql"]}')
+# print(f'default_schema_sql: {config["default_schema_sql"]}')
    
    
 # MAIN
