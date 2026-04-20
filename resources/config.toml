@@ -1,4 +1,4 @@
-default_schema.sql = """
+default_schema_sql = """
     CREATE TABLE IF NOT EXISTS images (
         image_id INTEGER PRIMARY KEY AUTOINCREMENT,
         image_path TEXT UNIQUE,

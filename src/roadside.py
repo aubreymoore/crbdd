@@ -936,7 +936,7 @@ def get_config() -> dict:
     """ 
     Ensures `config.toml` exists. If it doesn't, it will be downloaded from the GitHub repository.
     This function should be put at the top of python code which uses the `roadside` module.
-    Returns a dict containing config keys and values.
+    Returns a dict containing config keys and values. 
     """
     print('ensuring configuration file exists')
     ensure_data_file(
@@ -949,11 +949,12 @@ def get_config() -> dict:
     return config
 
     
-# # Usage example
+# Usage example
 # config = get_config()
 # with open("data_cache/config.toml", mode="rb") as f:
 #     config = tomllib.load(f)
-# print(config)
+# print(f'key list: {config.keys()}')
+# print(f'default_shema_sql: {config["default_schema_sql"]}')
    
    
 # MAIN
