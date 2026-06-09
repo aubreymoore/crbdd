@@ -1,4 +1,4 @@
-default_schema_sql = """
+default_schema_sql = '''
     CREATE TABLE IF NOT EXISTS images (
         image_id INTEGER PRIMARY KEY AUTOINCREMENT,
         image_path TEXT UNIQUE,
@@ -12,29 +12,18 @@ default_schema_sql = """
         detection_id INTEGER PRIMARY KEY AUTOINCREMENT,
         image_id INTEGER,
         class_id INTEGER,
-        tree_wkt TEXT,
-        crown_wkt TEXT,
-        x_min INTEGER,
-        y_min INTEGER,
-        x_max INTEGER,
-        y_max INTEGER,
+        tree_contour BLOB,
         confidence REAL,
         FOREIGN KEY (image_id) REFERENCES images (image_id) ON DELETE CASCADE 
     );
-    CREATE TABLE IF NOT EXISTS vcuts (
-        vcut_id INTEGER PRIMARY KEY AUTOINCREMENT,
-        detection_id INTEGER,
-        start_x INTEGER,
-        start_y INTEGER,
-        far_x INTEGER,
-        far_y INTEGER,        
-        end_x INTEGER,
-        end_y INTEGER,
-        depth REAL,
-        degrees REAL,
-        emptiness REAL,
-        FOREIGN KEY (detection_id) REFERENCES detections (detection_id) ON DELETE CASCADE
-    );
-"""
 
-db_path = 'test.db'
+    CREATE TABLE IF NOT EXISTS damage (
+        damage_id INTEGER PRIMARY KEY, 
+        detection_id INTEGER, 
+        defect_contour BLOB, 
+        FOREIGN KEY (detection_id) REFERENCES detections(detection_id) ON DELETE CASCADE
+    );
+'''
+dbpath = 'test.db'
+order = 14
+minpixels = 50
